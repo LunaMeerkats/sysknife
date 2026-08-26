@@ -980,7 +980,8 @@ async function main() {
 
   console.log();
   if (daemonInstall && !daemonInstall.daemonInstalled) {
-    const remainingSteps = daemonInstall.manualSteps.length;
+    const remainingSteps = daemonInstall.manualSteps.length
+      + (daemonInstall.mode === 'system' ? 1 : 0);
     const stepLabel = remainingSteps === 1 ? 'step' : 'steps';
     warn(`Setup incomplete: ${remainingSteps} ${stepLabel} left`);
     process.exitCode = 3;
@@ -1058,7 +1059,7 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
   --help, -h    Show this help message and exit.
 
 \x1b[1mEXIT STATUS\x1b[0m
-  0  setup is usable
+  0  setup finished without reported outstanding steps
   1  setup failed
   2  command-line arguments are invalid or incomplete
   3  setup finished with outstanding steps

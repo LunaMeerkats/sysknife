@@ -32,13 +32,17 @@ function runWizard({ daemonMode = 'skip', daemonInstall } = {}) {
     `require(${JSON.stringify(entry)});`,
   );
 
-  return spawnSync(process.execPath, ['-e', bootstrap.join(' ')], {
-    cwd,
-    encoding: 'utf8',
-    input: '',
-    timeout: 30_000,
-    env: { ...process.env, HOME: cwd },
-  });
+  try {
+    return spawnSync(process.execPath, ['-e', bootstrap.join(' ')], {
+      cwd,
+      encoding: 'utf8',
+      input: '',
+      timeout: 30_000,
+      env: { ...process.env, HOME: cwd },
+    });
+  } finally {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
 }
 
 test('generated integration rules require terminal-issued approval receipts', () => {
@@ -123,7 +127,7 @@ test('--help remains a non-interactive smoke test', () => {
     encoding: 'utf8',
   });
   assert.match(output, /sysknife-setup/);
-  assert.match(output, /0\s+setup is usable/);
+  assert.match(output, /0\s+setup finished without reported outstanding steps/);
   assert.match(output, /1\s+setup failed/);
   assert.match(output, /2\s+command-line arguments are invalid or incomplete/);
   assert.match(output, /3\s+setup finished with outstanding steps/);
@@ -168,7 +172,7 @@ test('the final setup status pluralizes outstanding steps and preserves complete
     },
   });
   const incompleteOutput = `${incomplete.stdout}${incomplete.stderr}`;
-  assert.match(incompleteOutput, /Setup incomplete: 2 steps left/);
+  assert.match(incompleteOutput, /Setup incomplete: 3 steps left/);
   assert.doesNotMatch(incompleteOutput, /Setup complete/);
   assert.equal(incomplete.status, 3, `incomplete setup must exit 3:\n${incompleteOutput}`);
 
