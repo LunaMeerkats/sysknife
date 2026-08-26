@@ -11,6 +11,36 @@ const setupDir = path.resolve(here, '..');
 const source = fs.readFileSync(path.join(setupDir, 'index.js'), 'utf8');
 const daemonInstaller = fs.readFileSync(path.join(setupDir, 'install-daemon.js'), 'utf8');
 
+function runWizard({ daemonMode = 'skip', daemonInstall } = {}) {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'sysknife-setup-contract-'));
+  const entry = path.join(setupDir, 'index.js');
+  const setupArgs = ['--claude', '--no-prompts', '--no-binary', `--daemon-mode=${daemonMode}`];
+  const bootstrap = [
+    "if (typeof process.getuid !== 'function') process.getuid = () => 1000;",
+  ];
+
+  if (daemonInstall) {
+    const daemonInstallerPath = path.join(setupDir, 'install-daemon.js');
+    bootstrap.push(
+      `const daemonInstaller = require(${JSON.stringify(daemonInstallerPath)});`,
+      `daemonInstaller.installDaemonService = async () => (${JSON.stringify(daemonInstall)});`,
+    );
+  }
+
+  bootstrap.push(
+    `process.argv = [process.execPath, ${JSON.stringify(entry)}, ...${JSON.stringify(setupArgs)}];`,
+    `require(${JSON.stringify(entry)});`,
+  );
+
+  return spawnSync(process.execPath, ['-e', bootstrap.join(' ')], {
+    cwd,
+    encoding: 'utf8',
+    input: '',
+    timeout: 30_000,
+    env: { ...process.env, HOME: cwd },
+  });
+}
+
 test('generated integration rules require terminal-issued approval receipts', () => {
   assert.match(source, /sysknife approve <transaction-id>/);
   assert.match(source, /chat response such as \"yes\" is not approval/i);
@@ -93,6 +123,10 @@ test('--help remains a non-interactive smoke test', () => {
     encoding: 'utf8',
   });
   assert.match(output, /sysknife-setup/);
+  assert.match(output, /0\s+setup is usable/);
+  assert.match(output, /1\s+setup failed/);
+  assert.match(output, /2\s+command-line arguments are invalid or incomplete/);
+  assert.match(output, /3\s+setup finished with outstanding steps/);
 });
 
 test('a daemon that was not installed is reported as outstanding, whatever the reason', () => {
@@ -101,14 +135,9 @@ test('a daemon that was not installed is reported as outstanding, whatever the r
   // configured and nothing able to execute. Both are not-installed outcomes and
   // both must say so.
   //
-  // Run in a throwaway cwd: the wizard writes .mcp.json and .claude/ where it
-  // is invoked, and --no-binary keeps it off the network.
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'sysknife-setup-outstanding-'));
-  const result = spawnSync(
-    process.execPath,
-    [path.join(setupDir, 'index.js'), '--claude', '--no-prompts', '--no-binary', '--daemon-mode=skip'],
-    { cwd, encoding: 'utf8', input: '', timeout: 30_000 },
-  );
+  // runWizard uses a throwaway cwd: the wizard writes .mcp.json and .claude/
+  // where it is invoked, and --no-binary keeps it off the network.
+  const result = runWizard();
 
   const output = `${result.stdout}${result.stderr}`;
   // The headline differs by reason — "You skipped …" where systemd exists,
@@ -124,4 +153,31 @@ test('a daemon that was not installed is reported as outstanding, whatever the r
     /Start manually:/,
     `the outstanding block must carry the steps, not just the warning:\n${output}`,
   );
+  assert.match(output, /Setup incomplete: 1 step left/);
+  assert.doesNotMatch(output, /Setup complete/);
+  assert.equal(result.status, 3, `incomplete setup must exit 3:\n${output}`);
+});
+
+test('the final setup status pluralizes outstanding steps and preserves complete success', () => {
+  const incomplete = runWizard({
+    daemonMode: 'system',
+    daemonInstall: {
+      mode: 'system',
+      daemonInstalled: false,
+      manualSteps: ['first daemon step', 'second daemon step'],
+    },
+  });
+  const incompleteOutput = `${incomplete.stdout}${incomplete.stderr}`;
+  assert.match(incompleteOutput, /Setup incomplete: 2 steps left/);
+  assert.doesNotMatch(incompleteOutput, /Setup complete/);
+  assert.equal(incomplete.status, 3, `incomplete setup must exit 3:\n${incompleteOutput}`);
+
+  const complete = runWizard({
+    daemonMode: 'user',
+    daemonInstall: { mode: 'user', daemonInstalled: true, manualSteps: [] },
+  });
+  const completeOutput = `${complete.stdout}${complete.stderr}`;
+  assert.match(completeOutput, /Setup complete/);
+  assert.doesNotMatch(completeOutput, /Setup incomplete/);
+  assert.equal(complete.status, 0, `complete setup must exit 0:\n${completeOutput}`);
 });

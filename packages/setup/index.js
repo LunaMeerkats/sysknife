@@ -979,7 +979,14 @@ async function main() {
   }
 
   console.log();
-  ok('Setup complete');
+  if (daemonInstall && !daemonInstall.daemonInstalled) {
+    const remainingSteps = daemonInstall.manualSteps.length;
+    const stepLabel = remainingSteps === 1 ? 'step' : 'steps';
+    warn(`Setup incomplete: ${remainingSteps} ${stepLabel} left`);
+    process.exitCode = 3;
+  } else {
+    ok('Setup complete');
+  }
   console.log();
 }
 
@@ -1049,6 +1056,12 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
   --dry-run     With --uninstall, print what would be removed and change
                 nothing.
   --help, -h    Show this help message and exit.
+
+\x1b[1mEXIT STATUS\x1b[0m
+  0  setup is usable
+  1  setup failed
+  2  command-line arguments are invalid or incomplete
+  3  setup finished with outstanding steps
 
 \x1b[1mDESCRIPTION\x1b[0m
   Interactive wizard that:
