@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -11,8 +12,9 @@ const setupDir = path.resolve(here, '..');
 const source = fs.readFileSync(path.join(setupDir, 'index.js'), 'utf8');
 const daemonInstaller = fs.readFileSync(path.join(setupDir, 'install-daemon.js'), 'utf8');
 
-function runWizard({ daemonMode = 'skip', daemonInstall } = {}) {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'sysknife-setup-contract-'));
+function runWizard({ daemonMode = 'skip', daemonInstall, cwd: suppliedCwd, env = {} } = {}) {
+  const cwd = suppliedCwd ?? fs.mkdtempSync(path.join(os.tmpdir(), 'sysknife-setup-contract-'));
+  const ownsCwd = suppliedCwd === undefined;
   const entry = path.join(setupDir, 'index.js');
   const setupArgs = ['--claude', '--no-prompts', '--no-binary', `--daemon-mode=${daemonMode}`];
   const bootstrap = [
@@ -38,10 +40,10 @@ function runWizard({ daemonMode = 'skip', daemonInstall } = {}) {
       encoding: 'utf8',
       input: '',
       timeout: 30_000,
-      env: { ...process.env, HOME: cwd },
+      env: { ...process.env, HOME: cwd, ...env },
     });
   } finally {
-    fs.rmSync(cwd, { recursive: true, force: true });
+    if (ownsCwd) fs.rmSync(cwd, { recursive: true, force: true });
   }
 }
 
@@ -185,3 +187,46 @@ test('the final setup status pluralizes outstanding steps and preserves complete
   assert.doesNotMatch(completeOutput, /Setup incomplete/);
   assert.equal(complete.status, 0, `complete setup must exit 0:\n${completeOutput}`);
 });
+
+test(
+  'a reachable externally managed daemon makes a skipped install complete',
+  { skip: process.platform === 'win32' ? 'Unix-domain netcat probe is exercised by Ubuntu CI' : false },
+  async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'sysknife-setup-reachable-'));
+    const socketDir = path.join(cwd, 'sysknife');
+    const socketPath = path.join(socketDir, 'daemon.sock');
+    fs.mkdirSync(socketDir, { recursive: true });
+
+    const server = net.createServer(socket => socket.end());
+    try {
+      await new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(socketPath, resolve);
+      });
+
+      const result = runWizard({
+        cwd,
+        env: { XDG_RUNTIME_DIR: cwd },
+        daemonInstall: {
+          mode: 'skip',
+          daemonInstalled: false,
+          manualSteps: [`Start manually:  ${path.join(cwd, 'sysknife-daemon')}`],
+        },
+      });
+      const output = `${result.stdout}${result.stderr}`;
+
+      assert.match(output, new RegExp(`Daemon socket reachable: ${socketPath.replaceAll('\\', '\\\\')}`));
+      assert.doesNotMatch(output, /nothing will execute until these steps are done/);
+      assert.match(output, /Setup complete/);
+      assert.doesNotMatch(output, /Setup incomplete/);
+      assert.equal(result.status, 0, `reachable daemon must make setup complete:\n${output}`);
+    } finally {
+      if (server.listening) {
+        await new Promise((resolve, reject) => {
+          server.close(error => (error ? reject(error) : resolve()));
+        });
+      }
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
+  },
+);
