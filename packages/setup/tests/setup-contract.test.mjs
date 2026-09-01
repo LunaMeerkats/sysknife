@@ -17,15 +17,18 @@ function runWizard({ daemonMode = 'skip', daemonInstall, cwd: suppliedCwd, env =
   const ownsCwd = suppliedCwd === undefined;
   const entry = path.join(setupDir, 'index.js');
   const setupArgs = ['--claude', '--no-prompts', '--no-binary', `--daemon-mode=${daemonMode}`];
+  const childEnv = { ...process.env, HOME: cwd, ...env };
   const bootstrap = [
     "if (typeof process.getuid !== 'function') process.getuid = () => 1000;",
   ];
 
   if (daemonInstall) {
     const daemonInstallerPath = path.join(setupDir, 'install-daemon.js');
+    childEnv.SYSKNIFE_SETUP_TEST_DAEMON_INSTALL = JSON.stringify(daemonInstall);
     bootstrap.push(
       `const daemonInstaller = require(${JSON.stringify(daemonInstallerPath)});`,
-      `daemonInstaller.installDaemonService = async () => (${JSON.stringify(daemonInstall)});`,
+      'daemonInstaller.installDaemonService = async () => '
+        + 'JSON.parse(process.env.SYSKNIFE_SETUP_TEST_DAEMON_INSTALL);',
     );
   }
 
@@ -40,7 +43,7 @@ function runWizard({ daemonMode = 'skip', daemonInstall, cwd: suppliedCwd, env =
       encoding: 'utf8',
       input: '',
       timeout: 30_000,
-      env: { ...process.env, HOME: cwd, ...env },
+      env: childEnv,
     });
   } finally {
     if (ownsCwd) fs.rmSync(cwd, { recursive: true, force: true });
