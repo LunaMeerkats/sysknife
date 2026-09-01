@@ -279,10 +279,13 @@ run_hygiene_group() {
     run_step 'hygiene: systemd-directory-modes.test.sh' bash "$repo_root/tests/release/systemd-directory-modes.test.sh"
     run_step 'hygiene: ubuntu-vm-bootstrap.test.sh' bash "$repo_root/tests/e2e/ubuntu-vm-bootstrap.test.sh"
     run_step 'hygiene: provider-parity.test.sh' bash "$repo_root/tests/e2e/provider-parity.test.sh"
+    run_step 'hygiene: vm-env-secrets.test.sh' bash "$repo_root/tests/e2e/vm-env-secrets.test.sh"
     run_step 'hygiene: story-metadata.test.sh' bash "$repo_root/tests/e2e/story-metadata.test.sh"
     run_step 'hygiene: vm-sync-parity.test.sh' bash "$repo_root/tests/e2e/vm-sync-parity.test.sh"
     run_step 'hygiene: docs-share-cards.test.sh' bash "$repo_root/tests/release/docs-share-cards.test.sh"
     run_step 'hygiene: install-paths.test.sh' bash "$repo_root/tests/release/install-paths.test.sh"
+    run_step 'hygiene: postgres-contract-guard.test.sh' bash "$repo_root/tests/release/postgres-contract-guard.test.sh"
+    run_step 'hygiene: audit-export-confidentiality.test.sh' bash "$repo_root/tests/release/audit-export-confidentiality.test.sh"
 
     if have markdownlint-cli2; then
         run_step 'hygiene: markdownlint-cli2' hygiene_markdownlint
