@@ -67,6 +67,9 @@ jobs:
       - name: Test internal dependency pin coverage
         run: bash tests/release/release-version-pins.test.sh
 
+      - name: Test the version-site registry is complete
+        run: bash tests/release/version-sites.test.sh
+
       - name: Check public support and approval claims
         run: bash tests/release/public-claims.test.sh
 
