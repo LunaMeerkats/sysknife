@@ -12,6 +12,8 @@ Releases before `0.2.5` predate the public launch; their notes live in the
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-09-22
+
 ### Security
 
 - `AddSwap` and `RemoveSwap` resolve the whole swap path before acting on it.
