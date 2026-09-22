@@ -140,10 +140,128 @@ with tempfile.TemporaryDirectory() as d4:
     if not op_refuses_before_mount(mod.op_unmount, ump):
         failures.append("op_unmount did NOT refuse a symlinked mountpoint before umount(8)")
 
+# 9. The swap operations resolve ANCESTORS, not just the final component.
+#    O_EXCL|O_NOFOLLOW on the leaf says nothing about the directories above it.
+#    A local user who owns any directory entry can have AddSwap create
+#    <dir>/swapfile once, replace <dir> with a symlink to a directory they do
+#    not own, and call AddSwap again: root then creates a file of up to 1 TiB
+#    inside the symlink target, and RemoveSwap unlinks inside it. No race is
+#    needed, because the attacker owns the entry outright.
+#
+#    op_mount has resolved the whole path with realpath since #155. The swap
+#    operations were never given the same treatment.
+swap_guard = getattr(mod, "assert_swap_path_safe", None)
+if swap_guard is None:
+    failures.append("assert_swap_path_safe() missing from sysknife-mount-edit")
+else:
+    def swap_rejects(path):
+        try:
+            swap_guard(path)
+        except SystemExit as exc:
+            return exc.code != 0
+        return False
+
+    with tempfile.TemporaryDirectory() as d5:
+        real = os.path.join(d5, "real")
+        victim = os.path.join(d5, "victim")
+        os.makedirs(real)
+        os.makedirs(victim)
+        # An ancestor the attacker controls, pointed somewhere they do not own.
+        hop = os.path.join(d5, "hop")
+        os.symlink(victim, hop)
+        if not swap_rejects(os.path.join(hop, "swapfile")):
+            failures.append("a swap path reached through a symlinked ANCESTOR was NOT refused")
+        # The leaf case, which O_EXCL|O_NOFOLLOW already covers at create time;
+        # the guard must refuse it too so rmswap gets the same answer as addswap.
+        leaf = os.path.join(real, "leaf")
+        os.symlink(os.path.join(victim, "target"), leaf)
+        if not swap_rejects(leaf):
+            failures.append("a swap path whose final component is a symlink was NOT refused")
+        # A path with no symlink anywhere must still be allowed, or the guard
+        # is just an outage.
+        try:
+            swap_guard(os.path.join(real, "swapfile"))
+        except SystemExit:
+            failures.append("a swap path with no symlink in it was refused; the guard is too wide")
+
+# 10. WIRING: both swap ops must reach that guard BEFORE they execute anything
+#     as root. subprocess.run is faked, so a missing guard fires the fake rather
+#     than running dd/mkswap/swapon or swapoff.
+def swap_op_refuses_before_exec(op, path, size_mb=1):
+    called = {"ran": False}
+
+    class FakeCompleted:
+        returncode = 1
+        stderr = b"blocked by test double"
+
+    def fake_run(cmd, **kw):
+        called["ran"] = True
+        return FakeCompleted()
+
+    class SwapArgs:
+        def __init__(self, file, size_mb):
+            self.file = file
+            self.size_mb = size_mb
+
+    real_run = mod.subprocess.run
+    mod.subprocess.run = fake_run
+    try:
+        op(SwapArgs(path, size_mb))
+        died = False
+    except SystemExit as exc:
+        died = exc.code != 0
+    finally:
+        mod.subprocess.run = real_run
+    return died and not called["ran"]
+
+
+with tempfile.TemporaryDirectory() as d6:
+    victim6 = os.path.join(d6, "victim")
+    os.makedirs(victim6)
+    hop6 = os.path.join(d6, "hop")
+    os.symlink(victim6, hop6)
+    target6 = os.path.join(hop6, "swapfile")
+
+    if not swap_op_refuses_before_exec(mod.op_addswap, target6):
+        failures.append("op_addswap did NOT refuse a symlinked ancestor before executing anything")
+
+    # The GRANDPARENT case, which is the one only the realpath guard can catch.
+    # O_DIRECTORY|O_NOFOLLOW on the parent rejects a parent that is itself a
+    # link, so the one-level case above passes even with the guard deleted.
+    # Here the parent ("sub") is a real directory reached THROUGH the link, so
+    # opening it succeeds and the create lands in the victim directory. A
+    # mutation that removes assert_swap_path_safe must fail here.
+    os.makedirs(os.path.join(victim6, "sub"))
+    deep6 = os.path.join(hop6, "sub", "swapfile")
+    if not swap_op_refuses_before_exec(mod.op_addswap, deep6):
+        failures.append("op_addswap did NOT refuse a symlinked GRANDPARENT before executing anything")
+    if os.listdir(os.path.join(victim6, "sub")):
+        failures.append(
+            f"op_addswap created {os.listdir(os.path.join(victim6, 'sub'))} through a symlinked grandparent")
+    # Nothing may have been created through the link, whatever the exit code was.
+    if "swapfile" in os.listdir(victim6):
+        failures.append("op_addswap created a swapfile inside the symlink target")
+
+    # rmswap consults known_swap_files() first, so declare the path in a staged
+    # fstab. Without this the test would pass for the wrong reason.
+    staged = os.path.join(d6, "fstab")
+    with open(staged, "w") as fh:
+        fh.write(f"{target6}\tnone\tswap\tsw,nofail\t0\t0\n")
+    real_fstab, real_swaps = mod.FSTAB, mod.PROC_SWAPS
+    mod.FSTAB, mod.PROC_SWAPS = staged, os.path.join(d6, "no-such-swaps")
+    try:
+        if target6 not in mod.known_swap_files():
+            failures.append("the staged fstab did not register the path, so the rmswap case is vacuous")
+        elif not swap_op_refuses_before_exec(mod.op_rmswap, target6):
+            failures.append("op_rmswap did NOT refuse a symlinked ancestor before executing anything")
+    finally:
+        mod.FSTAB, mod.PROC_SWAPS = real_fstab, real_swaps
+
 if failures:
     for f in failures:
         print("FAIL:", f)
     sys.exit(1)
 print("ok: sysknife-mount-edit refuses symlinked and critical-resolving mountpoints")
 print("ok: op_mount and op_unmount invoke the guard before any (u)mount")
+print("ok: the swap operations refuse a symlinked ancestor before running anything")
 PY

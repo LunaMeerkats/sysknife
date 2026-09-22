@@ -12,6 +12,15 @@ Releases before `0.2.5` predate the public launch; their notes live in the
 
 ## [Unreleased]
 
+### Security
+
+- `AddSwap` and `RemoveSwap` resolve the whole swap path before acting on it.
+  `O_EXCL|O_NOFOLLOW` constrains the final component only, so a symlinked
+  ancestor directory could place a root file create, and a root unlink, outside
+  the intended path. Both operations now refuse a path that resolves through a
+  symlink anywhere along it, and work relative to a pinned parent descriptor
+  rather than by name (GHSA-gqhr-84x9-x898).
+
 ## [0.17.0] — 2026-09-22
 
 ### Changed
