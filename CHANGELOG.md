@@ -12,6 +12,8 @@ Releases before `0.2.5` predate the public launch; their notes live in the
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-09-22
+
 ### Security
 
 - `PinDeployment` and `UnpinDeployment` bind to the deployment that was
