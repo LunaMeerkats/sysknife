@@ -12,6 +12,8 @@ Releases before `0.2.5` predate the public launch; their notes live in the
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-09-22
+
 ### Security
 
 - `AddMount` refuses the `suid` and `dev` mount options and adds `nosuid,nodev`
