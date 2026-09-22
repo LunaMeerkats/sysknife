@@ -20,6 +20,12 @@ Releases before `0.2.5` predate the public launch; their notes live in the
   the intended path. Both operations now refuse a path that resolves through a
   symlink anywhere along it, and work relative to a pinned parent descriptor
   rather than by name (GHSA-gqhr-84x9-x898).
+- `sysknife-grub-kargs-edit` refuses `debug-shell` and `runlevel1` as
+  `systemd.unit=` boot targets. The helper is callable directly through its
+  sudoers grant, where the daemon's own refusal does not apply, and its list
+  carried three of the five entries the daemon refuses. A test now derives the
+  daemon's list from its source and fails on any gap, so the two cannot drift
+  apart again (GHSA-f8vp-j3jh-7wjx).
 
 ## [0.17.0] — 2026-09-22
 
