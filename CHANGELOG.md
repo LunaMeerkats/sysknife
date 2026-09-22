@@ -12,6 +12,8 @@ Releases before `0.2.5` predate the public launch; their notes live in the
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-09-22
+
 ### Changed
 
 - `sysknife-setup` requires Node 22 or newer. Node 18 and 20 no longer receive
