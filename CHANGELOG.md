@@ -12,6 +12,26 @@ Releases before `0.2.5` predate the public launch; their notes live in the
 
 ## [Unreleased]
 
+### Security
+
+- `AddMount` refuses the `suid` and `dev` mount options and adds `nosuid,nodev`
+  to every mount it makes. `validated_mount_options` was a charset check with no
+  denylist, alone among the dangerous-value validators in that file, and
+  omitting the parameter reached the helper as `defaults`, which Linux expands
+  to `rw,suid,dev,exec,auto,nouser,async`. A setuid-root binary on
+  attacker-supplied media then granted root to whoever ran it. `exec` stays
+  allowed: running an ordinary binary from a mounted volume is a legitimate
+  need, and `nosuid` with `nodev` is what removes the escalation. The helper
+  carries the same list, and a test derives it from the Rust source so the two
+  cannot drift (GHSA-gqhr-84x9-x898).
+- Eight more sudo grant families carry argument constraints: `certbot`,
+  `fail2ban-client`, `snap`, `rpm-ostree`, `ostree`, `pro` and `netplan` at both
+  of its packaged paths. Each can run an arbitrary command as root through a
+  subcommand no action builds, by hook, jail action, snap, or rpm scriptlet.
+  Unconstrained grants fall from thirty-one to fifteen, and what remains is the
+  set whose first argument is the parameter itself, none of which can spawn a
+  shell (GHSA-j9c3-j2qr-65c4).
+
 ## [0.19.0] — 2026-09-22
 
 ### Security

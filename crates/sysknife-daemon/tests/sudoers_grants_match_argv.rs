@@ -168,10 +168,16 @@ fn matcher_rejects_a_bare_binary_name_against_an_absolute_argument_token() {
 ///
 /// A grant with no argument tokens matches whatever sudo is handed after the
 /// command, so `NOPASSWD: /usr/bin/systemctl` authorised `systemctl link
-/// /path/evil.service` as surely as `systemctl restart nginx`. Eight families
-/// were narrowed to the argv the catalogue actually builds; these are what is
-/// left, and each one is here because the narrowing is not derivable from the
-/// catalogue rather than because nobody looked.
+/// /path/evil.service` as surely as `systemctl restart nginx`. Sixteen
+/// families were narrowed to the argv the catalogue actually builds, in two
+/// passes: first the documented root-shell primitives, then every remaining
+/// binary that can run an arbitrary command as root (certbot through its
+/// hooks, fail2ban-client through a jail action, snap because snaps install
+/// and run as root, rpm-ostree through rpm scriptlets).
+///
+/// What is left is the set whose FIRST argument is the parameter itself, so
+/// there is no fixed leading token to anchor a grant on, and none of them can
+/// spawn a shell or execute a caller-supplied command.
 ///
 /// The catalogue records one SAMPLE argv per action, so a fixed subcommand and
 /// a parameter value are indistinguishable from it: `groupadd developers`
@@ -192,45 +198,13 @@ const BARE_BY_DESIGN: &[(&str, &str)] = &[
         "subcommand varies; Ubuntu Pro surface",
     ),
     (
-        "/usr/bin/certbot",
-        "certonly/renew/delete with differing flag order",
-    ),
-    (
         "/usr/bin/chage",
         "the aging flag is the first argument and varies",
     ),
     ("/usr/bin/do-release-upgrade", "flags only, no subcommand"),
     (
-        "/usr/bin/fail2ban-client",
-        "subcommand varies across the three callers",
-    ),
-    (
         "/usr/bin/gpasswd",
         "the flag and the user are both parameters",
-    ),
-    (
-        "/usr/bin/netplan",
-        "apply/try/generate, and the path differs by distro",
-    ),
-    (
-        "/usr/sbin/netplan",
-        "the same tool at the other packaged location",
-    ),
-    (
-        "/usr/bin/ostree",
-        "admin pin/unpin; the deployment index is a parameter",
-    ),
-    (
-        "/usr/bin/pro",
-        "attach/detach/enable/disable, all parameterised",
-    ),
-    (
-        "/usr/bin/rpm-ostree",
-        "twelve actions with no shared leading token",
-    ),
-    (
-        "/usr/bin/snap",
-        "install/remove/refresh/hold plus package names",
     ),
     (
         "/usr/sbin/aa-complain",
