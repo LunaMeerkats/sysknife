@@ -767,6 +767,19 @@ fn validated_absolute_path(
     Ok(s.to_string())
 }
 
+/// Validate a home directory: absolute, no `..`, safe charset.
+///
+/// `CreateUser` passes this to `useradd --create-home --home-dir <home>`, which
+/// runs as root, so the caller names a path and root acts on it. It used to go
+/// through [`validated_safe_arg`], which enforces a charset and rejects a
+/// leading dash and accepts both a relative path and `..`. The stricter
+/// validator was already in this file and already used by every other
+/// root-acting path parameter; the weaker of the two was guarding the more
+/// dangerous one.
+pub fn validated_home_dir(s: &str, param: &'static str) -> Result<String, ExecutorError> {
+    validated_absolute_path(s, param, MAX_FSTAB_FIELD_LEN)
+}
+
 /// Validate a mountpoint: absolute, no `..`, safe charset, and not a critical
 /// system mountpoint. Mirrors `valid_mountpoint` in the helper.
 pub fn validated_mount_point(s: &str, param: &'static str) -> Result<String, ExecutorError> {

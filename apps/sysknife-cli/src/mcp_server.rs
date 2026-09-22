@@ -1507,6 +1507,7 @@ mod tests {
                 bindings_checked: 0,
             },
             attribution,
+            status: None,
         }
     }
 
@@ -1598,6 +1599,7 @@ mod tests {
                     bindings_checked: 0,
                 },
                 attribution: Some(AttributionCensus::from_counts_for_tests(3, 0, 0, 0)),
+                status: None,
             },
             "/tmp/store.sqlite".to_string(),
         );

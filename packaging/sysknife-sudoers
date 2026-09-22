@@ -28,13 +28,21 @@
 # User management — create and delete system/human accounts.
 # useradd: called by CreateUser  (sudo useradd --create-home ...)
 # userdel: called by DeleteUser  (sudo userdel <username>)
-sysknife ALL=(root) NOPASSWD: /usr/sbin/useradd
+# `useradd --create-home` is the only form CreateUser builds, and every
+# optional flag follows it (actions/users.rs::create_user). A bare grant also
+# permitted `useradd -o -u 0 -g 0 backdoor`, a second uid-0 account, which is
+# root without a shell grant. The leading literal is what forbids it.
+sysknife ALL=(root) NOPASSWD: /usr/sbin/useradd --create-home *
 sysknife ALL=(root) NOPASSWD: /usr/sbin/userdel
 
 # Group membership — add/remove users to/from groups.
 # usermod: called by AddUserToGroup  (sudo usermod --append --groups <grp> <user>)
 # gpasswd: called by RemoveUserFromGroup  (sudo gpasswd --delete <user> <grp>)
-sysknife ALL=(root) NOPASSWD: /usr/sbin/usermod
+# LockUserAccount and UnlockUserAccount are the only callers, and each builds
+# exactly one flag. A bare grant also permitted `usermod -p <hash> root`,
+# which rewrites root's password hash.
+sysknife ALL=(root) NOPASSWD: /usr/sbin/usermod --lock *
+sysknife ALL=(root) NOPASSWD: /usr/sbin/usermod --unlock *
 sysknife ALL=(root) NOPASSWD: /usr/bin/gpasswd
 
 # Group lifecycle — create/delete groups.
@@ -52,21 +60,41 @@ sysknife ALL=(root) NOPASSWD: /usr/sbin/groupdel
 # Also backs the action-timeout reaper (#142): when a sudo action's root child
 # outlives the deadline, the daemon runs `sudo -n /usr/bin/kill -s <SIG> -- -<pgid>`
 # to signal that action's own process group as root — no new grant needed.
-sysknife ALL=(root) NOPASSWD: /usr/bin/kill
+# SignalProcess always builds the `-s <SIG>` form, and so does the
+# action-timeout reaper (#142). Requiring the literal `-s` keeps a bare
+# `kill -9 -1` off the grant.
+sysknife ALL=(root) NOPASSWD: /usr/bin/kill -s *
 
 # Service management — start, stop, restart, reload, enable, disable, mask, unmask,
 # daemon-reload. All systemctl write operations require root on Fedora.
-sysknife ALL=(root) NOPASSWD: /usr/bin/systemctl
+# One grant per subcommand the catalogue actually builds. A bare grant also
+# permitted `systemctl link /path/evil.service` followed by `enable --now`,
+# and `systemctl start debug-shell.service`, which the daemon's
+# ROOT_SHELL_UNITS denylist refuses on its own path and cannot refuse here.
+# Derived from actions/services.rs; tests/sudoers_grants_match_argv.rs fails
+# if an action ever builds a subcommand that is not in this list.
+sysknife ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
+sysknife ALL=(root) NOPASSWD: /usr/bin/systemctl reboot
+sysknife ALL=(root) NOPASSWD: /usr/bin/systemctl start *
+sysknife ALL=(root) NOPASSWD: /usr/bin/systemctl stop *
+sysknife ALL=(root) NOPASSWD: /usr/bin/systemctl restart *
+sysknife ALL=(root) NOPASSWD: /usr/bin/systemctl reload *
+sysknife ALL=(root) NOPASSWD: /usr/bin/systemctl enable *
+sysknife ALL=(root) NOPASSWD: /usr/bin/systemctl disable *
+sysknife ALL=(root) NOPASSWD: /usr/bin/systemctl mask *
+sysknife ALL=(root) NOPASSWD: /usr/bin/systemctl unmask *
+sysknife ALL=(root) NOPASSWD: /usr/bin/systemctl set-property *
 
 # Identity configuration — hostname, timezone, locale, NTP all require root via
 # hostnamectl/timedatectl/localectl (polkit "interactive auth" fails for system users).
-sysknife ALL=(root) NOPASSWD: /usr/bin/hostnamectl
-sysknife ALL=(root) NOPASSWD: /usr/bin/timedatectl
-sysknife ALL=(root) NOPASSWD: /usr/bin/localectl
+sysknife ALL=(root) NOPASSWD: /usr/bin/hostnamectl set-hostname *
+sysknife ALL=(root) NOPASSWD: /usr/bin/timedatectl set-ntp *
+sysknife ALL=(root) NOPASSWD: /usr/bin/timedatectl set-timezone *
+sysknife ALL=(root) NOPASSWD: /usr/bin/localectl set-locale *
 
 # Network configuration — resolvectl dns requires root; firewall-cmd --permanent
 # writes to /etc/firewalld/ which requires root.
-sysknife ALL=(root) NOPASSWD: /usr/bin/resolvectl
+sysknife ALL=(root) NOPASSWD: /usr/bin/resolvectl dns *
 
 # Fixed read-only nftables probes; the reporter itself has NO sudo grant.
 sysknife ALL=(root) NOPASSWD: /usr/sbin/nft list ruleset
