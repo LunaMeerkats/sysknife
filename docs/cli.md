@@ -337,8 +337,8 @@ All flags apply to every subcommand and to free-form intents.
 | `--step-by-step` | Prompt for approval before each individual step instead of once for the whole plan.  Each prompt comes *after* that step's daemon preview is printed. |
 | `--json` | Emit NDJSON to stdout — one JSON object per event (plan, preview, result).  All colour and spinner output is suppressed.  Safe to pipe. |
 | `--timeout SECS` | Hard wall-clock limit for the CLI invocation in seconds. Stops waiting when exceeded; see exit codes below. |
-| `--log-to FILE` | Tee all stdout output to FILE in addition to the terminal.  Appends if the file exists. |
-| `--dangerously-skip-approval` | Auto-approve HIGH-risk steps as well, with no human confirmation.  Refuses to run unless `SYSKNIFE_I_ACCEPT_UNATTENDED_ROOT=1` is also set.  See [Unattended mode](#unattended-mode). |
+| `--log-to FILE` | Tee stdout to FILE in addition to the terminal. Appends if the file exists; stderr diagnostics are not captured. |
+| `--dangerously-skip-approval` | Raises the ceiling `--yes` is clamped to from MEDIUM to HIGH, so `--yes --max-risk high` approves HIGH-risk steps too. It does not switch on `--yes`, `--max-risk` or `--non-interactive`; pass them yourself. Refuses to run unless `SYSKNIFE_I_ACCEPT_UNATTENDED_ROOT=1` is also set. See [Unattended mode](#unattended-mode). |
 
 ---
 
@@ -369,6 +369,11 @@ shell profile are the two ways this gets armed by accident, and requiring both
 means neither accident is sufficient. Only the exact value `1` counts; `true`,
 `yes` and `0` are all read as unset.
 
+The consent check applies to every subcommand, including commands such as
+`doctor` and `audit export` that do not approve actions. A wrapper that always
+adds the flag must therefore also provide the environment variable. The
+unattended-mode banner is written to stderr, so structured stdout remains clean.
+
 The flag has no short form and no abbreviation. Typing it has to be a decision.
 
 ### What it turns off
@@ -376,8 +381,9 @@ The flag has no short form and no abbreviation. Typing it has to be a decision.
 One thing: the approval gate.
 
 - `--yes` may now auto-approve HIGH-risk steps. The cap moves from MEDIUM to
-  HIGH.
-- The post-preview confirmation on a HIGH step no longer asks. The preview is
+  HIGH, and nothing else is switched on.
+- When `--yes` approves a HIGH step, its post-preview confirmation no longer
+  asks. The preview is
   still fetched and still printed, because it is the only record of what the
   run was about to change.
 
@@ -488,7 +494,13 @@ above.
 
 | Variable | Description |
 |---|---|
-| `SYSKNIFE_SOCKET` | Daemon socket the CLI dials (`unix://`, `vsock://`, or a bare path). Falls back to the same resolution as `SYSKNIFE_LISTEN_URI`: `$XDG_RUNTIME_DIR/sysknife/daemon.sock`, then `/tmp/sysknife-$UID.sock` as a last resort. Production deployments set this via the systemd unit to `/run/sysknife/daemon.sock`. |
+| `SYSKNIFE_SOCKET` | Daemon socket the CLI dials (`unix://`, `vsock://`, or a bare path). Falls back to the same resolution as `SYSKNIFE_LISTEN_URI`: `$XDG_RUNTIME_DIR/sysknife/daemon.sock`, then `/tmp/sysknife-$UID.sock` as a last resort. Production deployments set this via the systemd unit to `/run/sysknife/daemon.sock`. Audit commands read a local database directly and do not use this socket. |
+
+### Audit database
+
+| Variable | Description |
+|---|---|
+| `SYSKNIFE_DATABASE_PATH` | SQLite audit database used by `audit export` and `audit verify`. Set this when inspecting a copied database or selecting one store on a machine with multiple deployments. |
 
 ### Unattended-mode consent
 
@@ -524,6 +536,15 @@ sysknife --yes --max-risk low --non-interactive --timeout 60 \
 SYSKNIFE_I_ACCEPT_UNATTENDED_ROOT=1 \
   sysknife --dangerously-skip-approval --yes --max-risk high --json --timeout 300 \
      "apply pending security updates"
+```
+
+`--log-to` records stdout only. Capture stderr separately when the log must
+include provider notices, planning progress, and failure diagnostics:
+
+```sh
+sysknife --yes --max-risk low --non-interactive --timeout 60 \
+  --log-to /var/log/sysknife/run.log "check disk usage" \
+  2>>/var/log/sysknife/run.err
 ```
 
 The `--json` output schema:
